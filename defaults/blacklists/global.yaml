@@ -1,0 +1,339 @@
+# Doc-Bridge 项目通用黑名单
+# 此文件中的所有条目将被自动排除，不会被识别为实体或术语
+# 用户可自行追加条目
+
+# 通用技术术语
+tech_terms:
+  - HTTP
+  - HTTPS
+  - JSON
+  - XML
+  - SQL
+  - API
+  - REST
+  - RESTful
+  - TCP
+  - IP
+  - UDP
+  - FTP
+  - SFTP
+  - SSH
+  - SSL
+  - TLS
+  - WebSocket
+  - gRPC
+  - MQTT
+  - SOAP
+  - WSDL
+  - JDBC
+  - ODBC
+  - SDK
+  - MQ
+  - ETL
+  - OLAP
+  - OLTP
+  - CRUD
+  - ORM
+  - MVC
+  - MVVM
+  - CI/CD
+  - DevOps
+  - SaaS
+  - PaaS
+  - IaaS
+  - CDN
+  - DNS
+  - VPN
+  - NAT
+  - VLAN
+  - URL
+  - URI
+  - UUID
+  - JWT
+  - OAuth
+  - SSO
+  - LDAP
+  - RBAC
+  - AES
+  - RSA
+  - MD5
+  - SHA256
+  - BASE64
+  - UTF-8
+  - ASCII
+  - Unicode
+  - FIFO
+  - LIFO
+  - RPC
+  - SOA
+  - ESB
+  - BPM
+
+# 编程语言与框架
+languages_and_frameworks:
+  - Java
+  - Python
+  - JavaScript
+  - TypeScript
+  - Go
+  - Golang
+  - Rust
+  - C
+  - C++
+  - C#
+  - PHP
+  - Ruby
+  - Scala
+  - Kotlin
+  - Swift
+  - Dart
+  - Lua
+  - Shell
+  - Bash
+  - PowerShell
+  - Spring
+  - SpringBoot
+  - Spring Boot
+  - SpringCloud
+  - Spring Cloud
+  - SpringMVC
+  - Vue
+  - Vue.js
+  - React
+  - Angular
+  - Node.js
+  - Express
+  - Django
+  - Flask
+  - FastAPI
+  - MyBatis
+  - Hibernate
+  - JPA
+  - jQuery
+  - Bootstrap
+  - Webpack
+  - Maven
+  - Gradle
+  - npm
+  - pip
+  - Redis
+  - Kafka
+  - RabbitMQ
+  - ActiveMQ
+  - RocketMQ
+  - ZooKeeper
+  - Nginx
+  - Apache
+  - Tomcat
+  - Jetty
+  - Docker
+  - Kubernetes
+  - K8s
+  - Ansible
+  - Terraform
+  - Jenkins
+  - GitLab
+  - GitHub
+  - SVN
+  - Git
+  - Linux
+  - Windows
+  - macOS
+  - CentOS
+  - Ubuntu
+  - Debian
+  - MySQL
+  - PostgreSQL
+  - MongoDB
+  - Elasticsearch
+  - Solr
+  - Cassandra
+  - HBase
+  - Hadoop
+  - Spark
+  - Flink
+  - Hive
+  - Presto
+  - ClickHouse
+  - Neo4j
+  - InfluxDB
+  - Prometheus
+  - Grafana
+  - Kibana
+  - Logstash
+  - ELK
+  - MinIO
+  - Ceph
+  - HDFS
+  - Nacos
+  - Consul
+  - Eureka
+  - Sentinel
+  - Hystrix
+  - Dubbo
+  - Feign
+  - Ribbon
+  - Zuul
+  - Gateway
+  - Swagger
+  - OpenAPI
+  - Postman
+  - JUnit
+  - TestNG
+  - Selenium
+  - JMeter
+  - Netty
+  - gRPC
+  - Protobuf
+  - Thrift
+  - Avro
+
+# 品牌与厂商
+brands:
+  - 华为
+  - 中兴
+  - 浪潮
+  - 曙光
+  - 联想
+  - 中国电科
+  - 中国电子
+  - 中软国际
+  - 东软
+  - 用友
+  - 金蝶
+  - 宝兰德
+  - 中创
+  - 南大通用
+  - 人大金仓
+  - 神通
+  - 中标麒麟
+  - 统信
+  - 银河麒麟
+  - 龙芯
+  - 飞腾
+  - 鲲鹏
+  - 海光
+  - 申威
+  - 达梦
+  - OceanBase
+  - TiDB
+  - GaussDB
+  - PolarDB
+  - TDSQL
+  - Oracle
+  - IBM
+  - Microsoft
+  - Amazon
+  - Google
+  - Apple
+  - Intel
+  - AMD
+  - ARM
+  - VMware
+  - Citrix
+  - SAP
+  - Salesforce
+  - Adobe
+  - 阿里
+  - 阿里云
+  - 腾讯
+  - 腾讯云
+  - 百度
+  - 百度云
+  - 华为云
+  - 天翼云
+  - 移动云
+  - 京东云
+  - 字节跳动
+  - 美团
+  - 网易
+
+# 参数相关（正则模式）
+parameter_patterns:
+  - "^\\d+(\\.\\d+)*$"                                     # 纯数字/版本号: 2.0, 3.1.4
+  - "^v\\d+"                                               # v开头版本号: v2, v3.0
+  - "^V\\d+"                                               # V开头版本号: V2.0
+  - "^\\d+\\s*(ms|s|min|h|MB|GB|KB|TB|PB|Hz|MHz|GHz|Mbps|Gbps|bps|B|byte|bytes)$"  # 带单位数值
+  - "^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$"         # IP地址
+  - "^\\d{2,5}$"                                           # 端口号
+  - "^[A-Z_]{2,}=.+$"                                     # 环境变量/配置项: MAX_CONN=100
+  - "\\.(docx|pdf|xml|json|csv|xlsx|xls|txt|log|conf|ini|yaml|yml|properties|sql|jar|war|zip|tar|gz|bak|tmp|dat)$"  # 文件扩展名
+  - "^\\d+x\\d+$"                                         # 分辨率: 1920x1080
+  - "^\\d+\\.\\d+\\.\\d+\\.\\d+:\\d+$"                    # IP:端口
+  - "^(true|false|null|none|yes|no|on|off)$"               # 布尔值/空值
+  - "^[a-z][a-zA-Z]*\\.[a-z][a-zA-Z]*(\\.[a-z][a-zA-Z]*)*$"  # Java包名: com.example.service
+  - "^[A-Z_][A-Z_0-9]*$"                                  # 全大写常量名: MAX_RETRY_COUNT
+  - "^-{1,2}[a-zA-Z]"                                     # 命令行参数: --port, -p
+  - "^\\$\\{.*\\}$"                                        # 占位符: ${variable}
+  - "^%[a-zA-Z]"                                           # 格式化占位符: %s, %d
+
+# 常识性词汇
+common_words:
+  - 服务器
+  - 客户端
+  - 数据库
+  - 网络
+  - 接口
+  - 模块
+  - 组件
+  - 配置
+  - 参数
+  - 文件
+  - 目录
+  - 文件夹
+  - 用户
+  - 管理员
+  - 系统
+  - 平台
+  - 浏览器
+  - 终端
+  - 前端
+  - 后端
+  - 中间件
+  - 缓存
+  - 日志
+  - 报表
+  - 控制台
+  - 仪表盘
+  - 工作流
+  - 表单
+  - 列表
+  - 详情
+  - 弹窗
+  - 菜单
+  - 按钮
+  - 图表
+  - 导航
+  - 搜索
+  - 排序
+  - 分页
+  - 筛选
+  - 导入
+  - 导出
+  - 上传
+  - 下载
+  - 备份
+  - 恢复
+  - 部署
+  - 发布
+  - 测试
+  - 调试
+  - 监控
+  - 告警
+  - 通知
+  - 消息
+  - 邮件
+  - 短信
+  - 推送
+  - 权限
+  - 角色
+  - 认证
+  - 授权
+  - 加密
+  - 解密
+  - 签名
+  - 验签
+  - 哈希
+  - 令牌
+  - 密钥
+  - 证书
