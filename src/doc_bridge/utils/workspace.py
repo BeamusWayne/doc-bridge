@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import quote
 
 from doc_bridge.models.config import WorkspaceConfig
 
@@ -38,15 +39,20 @@ def atom_dir_for_file(ws: WorkspaceConfig, system: str, filename: str) -> Path:
 
 
 def relative_link(from_file: Path, to_file: Path) -> str:
-    """Compute markdown relative link path between two files."""
+    """Compute a URL-encoded markdown relative link between two files.
+
+    The returned string is safe to place inside ``[text](...)`` — spaces,
+    parentheses and non-ASCII characters are percent-encoded so that
+    Markdown renderers don't break the link. ``/`` is preserved as the
+    path separator.
+    """
     try:
         rel = to_file.relative_to(from_file.parent)
-        return str(rel)
+        rel_str = str(rel)
     except ValueError:
         # Not a sub-path; compute relative manually
         from_parts = from_file.parent.parts
         to_parts = to_file.parts
-        # Find common prefix length
         common = 0
         for a, b in zip(from_parts, to_parts):
             if a == b:
@@ -55,4 +61,6 @@ def relative_link(from_file: Path, to_file: Path) -> str:
                 break
         ups = len(from_parts) - common
         downs = to_parts[common:]
-        return str(Path(*( [".."] * ups + list(downs) )))
+        rel_str = str(Path(*([".."] * ups + list(downs))))
+
+    return quote(rel_str.replace("\\", "/"), safe="/")
