@@ -1,10 +1,16 @@
 """Synthesis — aggregate atom files into summary tables.
 
-Each summary table renders one row per atom in its dedup group. The group's
-primary atom carries the entity/term/dataflow name; follow-up rows leave the
-name cell empty so every remaining cell (description, responsibilities,
-source links, paragraphs) maps 1:1 to a single atom. This preserves
-phrase-level traceability across sources without collapsing content.
+Entity and data-flow tables render one row per atom in a dedup group. The
+primary atom carries the name; follow-up rows leave the name cell empty so
+every remaining cell (description, responsibilities, source links) maps 1:1
+to a single atom — multi-row surfaces per-source variation in
+responsibilities / payloads.
+
+The glossary table renders one row per group (term). A term's definition
+should be consistent across documents, so per-atom expansion would only add
+noise. Sources from all atoms in the group are joined with ``<br>`` inside
+each source cell to keep full traceability without growing the table
+vertically.
 """
 
 from __future__ import annotations
@@ -116,7 +122,13 @@ def _build_glossary_table(
     groups: list[list[int]],
     synthesis_path: Path,
 ) -> str:
-    """Render glossary summary. One row per atom; name shown only on the group's first row."""
+    """Render glossary summary. One row per term; sources across the group
+    are joined with ``<br>`` inside each source cell.
+
+    Name, domain, and definition come from the group's primary atom (a term
+    should have a single canonical definition). Aliases are the union across
+    all atoms in the group, preserving first-seen order.
+    """
     source_docs = {
         (atoms[i][1].get("provenance", {}) or {}).get("original_file", "")
         for group in groups for i in group
@@ -131,20 +143,36 @@ def _build_glossary_table(
     ]
 
     for indices in groups:
-        primary_name = atoms[indices[0]][1].get("name", "")
-        for position, idx in enumerate(indices):
+        primary_meta = atoms[indices[0]][1]
+        name = primary_meta.get("name", "")
+        domain = primary_meta.get("domain", "") or "待确认"
+        definition = _extract_section(primary_meta.get("_body", ""), "## 定义")
+
+        seen_aliases: set[str] = set()
+        aliases: list[str] = []
+        for idx in indices:
+            for alias in atoms[idx][1].get("aliases", []) or []:
+                if alias and alias not in seen_aliases:
+                    seen_aliases.add(alias)
+                    aliases.append(alias)
+        aliases_cell = "; ".join(aliases)
+
+        file_cells: list[str] = []
+        atom_cells: list[str] = []
+        para_cells: list[str] = []
+        for idx in indices:
             atom_path, meta = atoms[idx]
-            name_cell = primary_name if position == 0 else ""
-            domain = meta.get("domain", "") or "待确认"
-            aliases = "; ".join(meta.get("aliases", []) or [])
-            definition = _extract_section(meta.get("_body", ""), "## 定义")
-            file_cell, atom_cell, para_cell = _atom_source_cells(
-                ws, atom_path, meta, synthesis_path,
-            )
-            lines.append(
-                f"| {name_cell} | {domain} | {aliases} | {definition} "
-                f"| {file_cell} | {atom_cell} | {para_cell} |"
-            )
+            f, a, p = _atom_source_cells(ws, atom_path, meta, synthesis_path)
+            file_cells.append(f)
+            atom_cells.append(a)
+            para_cells.append(p)
+
+        lines.append(
+            f"| {name} | {domain} | {aliases_cell} | {definition} "
+            f"| {'<br>'.join(file_cells)} "
+            f"| {'<br>'.join(atom_cells)} "
+            f"| {'<br>'.join(para_cells)} |"
+        )
 
     return "\n".join(lines) + "\n"
 
