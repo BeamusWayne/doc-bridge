@@ -2,6 +2,7 @@
 
 import click
 
+from doc_bridge.commands.add_system_cmd import add_system_cmd
 from doc_bridge.commands.atomize_cmd import atomize_cmd
 from doc_bridge.commands.init_cmd import init_cmd
 from doc_bridge.commands.prompts_cmd import prompts_cmd
@@ -17,6 +18,7 @@ def main() -> None:
 
 
 main.add_command(init_cmd)
+main.add_command(add_system_cmd)
 main.add_command(atomize_cmd)
 main.add_command(synthesize_cmd)
 main.add_command(status_cmd)
