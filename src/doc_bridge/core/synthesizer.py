@@ -1,9 +1,16 @@
-"""Synthesis — aggregate atom files into summary tables."""
+"""Synthesis — aggregate atom files into summary tables.
+
+Each summary table renders one row per atom in its dedup group. The group's
+primary atom carries the entity/term/dataflow name; follow-up rows leave the
+name cell empty so every remaining cell (description, responsibilities,
+source links, paragraphs) maps 1:1 to a single atom. This preserves
+phrase-level traceability across sources without collapsing content.
+"""
 
 from __future__ import annotations
 
-import asyncio
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -40,58 +47,104 @@ def _collect_atoms(
     return results
 
 
+def _extract_section(body: str, heading: str) -> str:
+    """Return the first non-empty line under a `## heading` section, or ''."""
+    in_section = False
+    for line in body.split("\n"):
+        stripped = line.strip()
+        if stripped == heading:
+            in_section = True
+            continue
+        if in_section and stripped.startswith("## "):
+            break
+        if in_section and stripped:
+            return stripped
+    return ""
+
+
+def _extract_bullet_list(body: str, heading: str) -> list[str]:
+    """Return bullet items (`- …`) under a `## heading` section."""
+    items: list[str] = []
+    in_section = False
+    for line in body.split("\n"):
+        stripped = line.strip()
+        if stripped == heading:
+            in_section = True
+            continue
+        if in_section and stripped.startswith("## "):
+            break
+        if in_section and stripped.startswith("- "):
+            item = stripped[2:].strip()
+            if item:
+                items.append(item)
+    return items
+
+
+def _atom_source_cells(
+    ws: WorkspaceConfig,
+    atom_path: Path,
+    meta: dict[str, Any],
+    synthesis_path: Path,
+) -> tuple[str, str, str]:
+    """Build the three source cells (文件来源, 路径来源, 段落来源) for one atom.
+
+    段落来源 format is unified across tables: ``<filename> §p, §q``.
+    """
+    prov = meta.get("provenance", {}) or {}
+    original = prov.get("original_file", "")
+    paragraphs = prov.get("paragraphs", []) or []
+    orig_name = Path(original).name if original else ""
+    orig_rel = relative_link(synthesis_path, ws.root / original) if original else ""
+    atom_rel = relative_link(synthesis_path, atom_path)
+
+    file_cell = f"[{orig_name}]({orig_rel})" if orig_name else ""
+    atom_cell = f"[{atom_path.name}]({atom_rel})"
+    para_tokens = ", ".join(f"§{p}" for p in paragraphs)
+    if orig_name and para_tokens:
+        para_cell = f"{orig_name} {para_tokens}"
+    elif para_tokens:
+        para_cell = para_tokens
+    else:
+        para_cell = orig_name
+    return file_cell, atom_cell, para_cell
+
+
 def _build_glossary_table(
     ws: WorkspaceConfig,
     system: str,
     atoms: list[tuple[Path, dict[str, Any]]],
+    groups: list[list[int]],
     synthesis_path: Path,
 ) -> str:
-    """Build glossary summary table markdown."""
+    """Render glossary summary. One row per atom; name shown only on the group's first row."""
+    source_docs = {
+        (atoms[i][1].get("provenance", {}) or {}).get("original_file", "")
+        for group in groups for i in group
+    }
     lines = [
         f"# 术语总表 - {system}\n",
-        f"> 生成时间: {__import__('datetime').datetime.now().isoformat()}",
-        f"> 术语数量: {len(atoms)}",
-        f"> 来源文档: {len(set(m.get('provenance', {}).get('original_file', '') for _, m in atoms))}\n",
+        f"> 生成时间: {datetime.now().isoformat()}",
+        f"> 术语数量: {len(groups)}",
+        f"> 来源文档: {len(source_docs)}\n",
         "| 术语名称 | 专业域 | 别名 | 定义 | 文件来源 | 路径来源 | 段落来源 |",
         "|----------|--------|------|------|----------|----------|----------|",
     ]
 
-    for atom_path, meta in atoms:
-        name = meta.get("name", "")
-        domain = meta.get("domain", "待确认")
-        aliases = "; ".join(meta.get("aliases", []))
-        prov = meta.get("provenance", {})
-        original = prov.get("original_file", "")
-        paragraphs = prov.get("paragraphs", [])
-
-        # Extract definition from body
-        body = meta.get("_body", "")
-        definition = ""
-        in_def = False
-        for line in body.split("\n"):
-            if line.strip() == "## 定义":
-                in_def = True
-                continue
-            if in_def and line.startswith("## "):
-                break
-            if in_def and line.strip():
-                definition = line.strip()
-                break
-
-        # Build relative links
-        orig_rel = relative_link(synthesis_path, ws.root / original)
-        atom_rel = relative_link(synthesis_path, atom_path)
-        orig_name = Path(original).name
-        atom_name = atom_path.name
-
-        para_str = ", ".join(f"§{p}" for p in paragraphs)
-
-        lines.append(
-            f"| {name} | {domain} | {aliases} | {definition} "
-            f"| [{orig_name}]({orig_rel}) "
-            f"| [{atom_name}]({atom_rel}) "
-            f"| {para_str} |"
-        )
+    for indices in groups:
+        primary_name = atoms[indices[0]][1].get("name", "")
+        for position, idx in enumerate(indices):
+            atom_path, meta = atoms[idx]
+            name_cell = primary_name if position == 0 else ""
+            domain = meta.get("domain", "") or "待确认"
+            aliases = "; ".join(meta.get("aliases", []) or [])
+            definition = _extract_section(meta.get("_body", ""), "## 定义")
+            file_cell, atom_cell, para_cell = _atom_source_cells(
+                ws, atom_path, meta, synthesis_path,
+            )
+            lines.append(
+                f"| {name_cell} | {domain} | {aliases} | {definition} "
+                f"| {file_cell} | {atom_cell} | {para_cell} |"
+            )
 
     return "\n".join(lines) + "\n"
 
@@ -100,51 +153,33 @@ def _build_entity_table(
     ws: WorkspaceConfig,
     system: str,
     atoms: list[tuple[Path, dict[str, Any]]],
+    groups: list[list[int]],
     synthesis_path: Path,
 ) -> str:
-    """Build entity summary table markdown."""
+    """Render entity summary. One row per atom; name shown only on the group's first row."""
     lines = [
         f"# 实体总表 - {system}\n",
-        f"> 生成时间: {__import__('datetime').datetime.now().isoformat()}",
-        f"> 实体数量: {len(atoms)}\n",
+        f"> 生成时间: {datetime.now().isoformat()}",
+        f"> 实体数量: {len(groups)}\n",
         "| 实体名称 | 描述 | 职责 | 文件来源 | 路径来源 | 段落来源 |",
         "|----------|------|------|----------|----------|----------|",
     ]
 
-    for atom_path, meta in atoms:
-        name = meta.get("name", "")
-        description = meta.get("description", "")
-        prov = meta.get("provenance", {})
-        original = prov.get("original_file", "")
-        paragraphs = prov.get("paragraphs", [])
-
-        # Extract responsibilities from body
-        body = meta.get("_body", "")
-        responsibilities: list[str] = []
-        in_resp = False
-        for line in body.split("\n"):
-            if line.strip() == "## 职责":
-                in_resp = True
-                continue
-            if in_resp and line.startswith("## "):
-                break
-            if in_resp and line.strip().startswith("- "):
-                responsibilities.append(line.strip()[2:])
-
-        resp_str = " / ".join(responsibilities) if responsibilities else ""
-
-        orig_rel = relative_link(synthesis_path, ws.root / original)
-        atom_rel = relative_link(synthesis_path, atom_path)
-        orig_name = Path(original).name
-        atom_name = atom_path.name
-        para_str = ", ".join(f"§{p}" for p in paragraphs)
-
-        lines.append(
-            f"| {name} | {description} | {resp_str} "
-            f"| [{orig_name}]({orig_rel}) "
-            f"| [{atom_name}]({atom_rel}) "
-            f"| {para_str} |"
-        )
+    for indices in groups:
+        primary_name = atoms[indices[0]][1].get("name", "")
+        for position, idx in enumerate(indices):
+            atom_path, meta = atoms[idx]
+            name_cell = primary_name if position == 0 else ""
+            description = meta.get("description", "") or ""
+            responsibilities = _extract_bullet_list(meta.get("_body", ""), "## 职责")
+            resp_cell = " / ".join(responsibilities)
+            file_cell, atom_cell, para_cell = _atom_source_cells(
+                ws, atom_path, meta, synthesis_path,
+            )
+            lines.append(
+                f"| {name_cell} | {description} | {resp_cell} "
+                f"| {file_cell} | {atom_cell} | {para_cell} |"
+            )
 
     return "\n".join(lines) + "\n"
 
@@ -153,39 +188,35 @@ def _build_dataflow_table(
     ws: WorkspaceConfig,
     system: str,
     atoms: list[tuple[Path, dict[str, Any]]],
+    groups: list[list[int]],
     synthesis_path: Path,
 ) -> str:
-    """Build data flow summary table markdown."""
+    """Render data flow summary. One row per atom; name shown only on the group's first row."""
     lines = [
         f"# 数据流总表 - {system}\n",
-        f"> 生成时间: {__import__('datetime').datetime.now().isoformat()}",
-        f"> 数据流数量: {len(atoms)}\n",
+        f"> 生成时间: {datetime.now().isoformat()}",
+        f"> 数据流数量: {len(groups)}\n",
         "| 数据流名称 | 源实体 | 目标实体 | 中间实体 | 数据内容 | 文件来源 | 路径来源 | 段落来源 |",
         "|-----------|--------|---------|---------|---------|----------|----------|----------|",
     ]
 
-    for atom_path, meta in atoms:
-        name = meta.get("name", "")
-        source = meta.get("source_entity", "")
-        target = meta.get("target_entity", "")
-        intermediates = ", ".join(meta.get("intermediate_entities", []))
-        data_content = meta.get("data_content", "")
-        prov = meta.get("provenance", {})
-        original = prov.get("original_file", "")
-        paragraphs = prov.get("paragraphs", [])
-
-        orig_rel = relative_link(synthesis_path, ws.root / original)
-        atom_rel = relative_link(synthesis_path, atom_path)
-        orig_name = Path(original).name
-        atom_name = atom_path.name
-        para_str = ", ".join(f"§{p}" for p in paragraphs)
-
-        lines.append(
-            f"| {name} | {source} | {target} | {intermediates} | {data_content} "
-            f"| [{orig_name}]({orig_rel}) "
-            f"| [{atom_name}]({atom_rel}) "
-            f"| {para_str} |"
-        )
+    for indices in groups:
+        primary_name = atoms[indices[0]][1].get("name", "")
+        for position, idx in enumerate(indices):
+            atom_path, meta = atoms[idx]
+            name_cell = primary_name if position == 0 else ""
+            source_entity = meta.get("source_entity", "") or ""
+            target_entity = meta.get("target_entity", "") or ""
+            intermediates = ", ".join(meta.get("intermediate_entities", []) or [])
+            data_content = meta.get("data_content", "") or ""
+            file_cell, atom_cell, para_cell = _atom_source_cells(
+                ws, atom_path, meta, synthesis_path,
+            )
+            lines.append(
+                f"| {name_cell} | {source_entity} | {target_entity} "
+                f"| {intermediates} | {data_content} "
+                f"| {file_cell} | {atom_cell} | {para_cell} |"
+            )
 
     return "\n".join(lines) + "\n"
 
@@ -210,13 +241,12 @@ async def synthesize_system(
 ) -> dict[str, int]:
     """Synthesize summary tables for a system.
 
-    Returns counts per type.
+    Returns counts per type (number of logical groups).
     """
     log = flow_logger or logger
     synthesis_dir = ws.system_synthesis_dir(system)
     synthesis_dir.mkdir(parents=True, exist_ok=True)
 
-    # Collect all atoms
     glossary_atoms = _collect_atoms(ws, system, "glossary")
     entity_atoms = _collect_atoms(ws, system, "entities")
     dataflow_atoms = _collect_atoms(ws, system, "data-flow")
@@ -228,7 +258,6 @@ async def synthesize_system(
         f"data_flows={len(dataflow_atoms)}"
     )
 
-    # LLM dedup (if enabled and client provided) — returns index groups
     if do_dedup and client and llm_config:
         glossary_groups = await _group_atoms(
             ws, system, "glossary", glossary_atoms, client, log,
@@ -244,26 +273,23 @@ async def synthesize_system(
         entity_groups = [[i] for i in range(len(entity_atoms))]
         dataflow_groups = [[i] for i in range(len(dataflow_atoms))]
 
-    # Build tables
     glossary_path = synthesis_dir / "术语总表.md"
     entity_path = synthesis_dir / "实体总表.md"
     dataflow_path = synthesis_dir / "数据流总表.md"
 
-    # glossary / dataflow: legacy flat rendering using group representatives
-    glossary_flat = _flatten_groups(glossary_atoms, glossary_groups)
-    dataflow_flat = _flatten_groups(dataflow_atoms, dataflow_groups)
-
-    glossary_md = _build_glossary_table(ws, system, glossary_flat, glossary_path)
-    entity_md = _build_entity_table_grouped(
-        ws, system, entity_atoms, entity_groups, entity_path,
+    glossary_path.write_text(
+        _build_glossary_table(ws, system, glossary_atoms, glossary_groups, glossary_path),
+        encoding="utf-8",
     )
-    dataflow_md = _build_dataflow_table(ws, system, dataflow_flat, dataflow_path)
+    entity_path.write_text(
+        _build_entity_table(ws, system, entity_atoms, entity_groups, entity_path),
+        encoding="utf-8",
+    )
+    dataflow_path.write_text(
+        _build_dataflow_table(ws, system, dataflow_atoms, dataflow_groups, dataflow_path),
+        encoding="utf-8",
+    )
 
-    glossary_path.write_text(glossary_md, encoding="utf-8")
-    entity_path.write_text(entity_md, encoding="utf-8")
-    dataflow_path.write_text(dataflow_md, encoding="utf-8")
-
-    # Write backlinks for ALL atoms in every group, not just primaries
     _write_backlinks(glossary_atoms, glossary_path)
     _write_backlinks(entity_atoms, entity_path)
     _write_backlinks(dataflow_atoms, dataflow_path)
@@ -290,20 +316,11 @@ async def _group_atoms(
     Returns list of groups; each group is atom indices belonging to the same
     entity/term/dataflow. Index 0 of each group is the representative.
     Singletons are returned as `[idx]`.
-
-    Fixes relative to the old `_dedup_atoms`:
-    - Operates on atom indices (not names), so same-name atoms from different
-      source files are properly distinguished.
-    - Normalizes LLM output: each index is assigned to at most one group, and
-      the representative is always preserved (can't be in `to_remove`).
-    - Passes truncated descriptions to the LLM alongside names to help it
-      disambiguate look-alike entries (e.g. `PAS接口机(主)` vs `(备)`).
     """
     n = len(atoms)
     if n < 2:
         return [[i] for i in range(n)]
 
-    # Build indexed display list with names + short descriptions
     DESC_PREVIEW = 60
     items: list[str] = []
     for i, (_, meta) in enumerate(atoms):
@@ -372,126 +389,8 @@ async def _group_atoms(
             names_preview = [atoms[i][1].get("name", "") for i in valid]
             log.info(f"{atom_type} 去重合并 indices={valid}: {names_preview}")
 
-    # Append singletons in original order so output is stable
     for i in range(n):
         if i not in assigned:
             groups.append([i])
 
     return groups
-
-
-def _flatten_groups(
-    atoms: list[tuple[Path, dict[str, Any]]],
-    groups: list[list[int]],
-) -> list[tuple[Path, dict[str, Any]]]:
-    """Keep only the primary of each group. Used for glossary/dataflow legacy render."""
-    return [atoms[g[0]] for g in groups]
-
-
-def _extract_responsibilities(body: str) -> list[str]:
-    """Pull bullet items under the `## 职责` section."""
-    resps: list[str] = []
-    in_resp = False
-    for line in body.split("\n"):
-        stripped = line.strip()
-        if stripped == "## 职责":
-            in_resp = True
-            continue
-        if in_resp and stripped.startswith("## "):
-            break
-        if in_resp and stripped.startswith("- "):
-            item = stripped[2:].strip()
-            if item:
-                resps.append(item)
-    return resps
-
-
-def _merge_group_A1(
-    atoms: list[tuple[Path, dict[str, Any]]],
-    indices: list[int],
-) -> tuple[str, list[str]]:
-    """Mechanical concat + substring dedup for description and responsibilities."""
-    # Description: split each atom's description on common separators, dedup, rejoin.
-    desc_parts: list[str] = []
-    seen_desc: set[str] = set()
-    for i in indices:
-        desc = (atoms[i][1].get("description") or "").strip()
-        if not desc:
-            continue
-        for sub in (s.strip() for s in desc.split("/")):
-            if sub and sub not in seen_desc:
-                seen_desc.add(sub)
-                desc_parts.append(sub)
-    merged_desc = " / ".join(desc_parts)
-
-    # Responsibilities: union preserving first-seen order.
-    resp_parts: list[str] = []
-    seen_resp: set[str] = set()
-    for i in indices:
-        body = atoms[i][1].get("_body", "")
-        for resp in _extract_responsibilities(body):
-            if resp not in seen_resp:
-                seen_resp.add(resp)
-                resp_parts.append(resp)
-    return merged_desc, resp_parts
-
-
-def _build_entity_table_grouped(
-    ws: WorkspaceConfig,
-    system: str,
-    atoms: list[tuple[Path, dict[str, Any]]],
-    groups: list[list[int]],
-    synthesis_path: Path,
-) -> str:
-    """Render entity summary with aggregated sources across merged atom groups."""
-    lines = [
-        f"# 实体总表 - {system}\n",
-        f"> 生成时间: {__import__('datetime').datetime.now().isoformat()}",
-        f"> 实体数量: {len(groups)}\n",
-        "| 实体名称 | 描述 | 职责 | 文件来源 | 路径来源 | 段落来源 |",
-        "|----------|------|------|----------|----------|----------|",
-    ]
-
-    for indices in groups:
-        primary_path, primary_meta = atoms[indices[0]]
-        name = primary_meta.get("name", "")
-        merged_desc, merged_resps = _merge_group_A1(atoms, indices)
-        resp_str = " / ".join(merged_resps) if merged_resps else ""
-
-        file_links: list[str] = []
-        atom_links: list[str] = []
-        para_parts: list[str] = []
-        seen_files: set[str] = set()
-        seen_atoms: set[Path] = set()
-
-        for idx in indices:
-            atom_path, meta = atoms[idx]
-            prov = meta.get("provenance", {}) or {}
-            original = prov.get("original_file", "")
-            paragraphs = prov.get("paragraphs", []) or []
-
-            orig_name = Path(original).name if original else ""
-            orig_rel = relative_link(synthesis_path, ws.root / original) if original else ""
-            atom_rel = relative_link(synthesis_path, atom_path)
-            atom_name = atom_path.name
-
-            if orig_name and orig_name not in seen_files:
-                seen_files.add(orig_name)
-                file_links.append(f"[{orig_name}]({orig_rel})")
-            if atom_path not in seen_atoms:
-                seen_atoms.add(atom_path)
-                atom_links.append(f"[{atom_name}]({atom_rel})")
-            if paragraphs:
-                para_str = ", ".join(f"§{p}" for p in paragraphs)
-                para_parts.append(f"{orig_name} {para_str}" if orig_name else para_str)
-
-        files_cell = " / ".join(file_links)
-        atoms_cell = " / ".join(atom_links)
-        paras_cell = " / ".join(para_parts)
-
-        lines.append(
-            f"| {name} | {merged_desc} | {resp_str} "
-            f"| {files_cell} | {atoms_cell} | {paras_cell} |"
-        )
-
-    return "\n".join(lines) + "\n"
