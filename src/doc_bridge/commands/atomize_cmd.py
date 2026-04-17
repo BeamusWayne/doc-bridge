@@ -20,7 +20,8 @@ from doc_bridge.llm.client import LLMClient
 from doc_bridge.llm.logger import LLMCallLogger, setup_flow_logger
 from doc_bridge.llm.prompt_loader import load_prompt
 from doc_bridge.models.config import LLMConfig, WorkspaceConfig
-from doc_bridge.utils.workspace import list_raw_files, resolve_workspace
+from doc_bridge.utils.system_ops import suggest_close_system
+from doc_bridge.utils.workspace import list_raw_files, list_systems, resolve_workspace
 
 
 @click.command("atomize")
@@ -39,11 +40,10 @@ async def _atomize(
     ws = resolve_workspace()
     ws.validate()
 
-    # Check system directory exists
+    # Check system directory exists; produce a helpful error otherwise.
     raw_dir = ws.system_raw_dir(system)
     if not raw_dir.exists():
-        click.echo(f"错误: 系统目录不存在: {raw_dir}")
-        click.echo(f"请先创建目录并放入文档: mkdir -p {raw_dir}")
+        _emit_missing_system_error(ws, system)
         raise SystemExit(1)
 
     # Setup logging
@@ -146,3 +146,22 @@ def _get_prompt_versions(ws: WorkspaceConfig, system: str) -> dict[str, str]:
         except FileNotFoundError:
             versions[name] = "unknown"
     return versions
+
+
+def _emit_missing_system_error(ws: WorkspaceConfig, system: str) -> None:
+    """Print a helpful error for a missing system (typo-aware)."""
+    existing = list_systems(ws)
+    if not existing:
+        click.echo(
+            f"错误: 工作空间还没有任何系统。\n"
+            f"  新增系统: doc-bridge add-system {system}"
+        )
+        return
+
+    lines = [f"错误: 系统 {system!r} 不存在。"]
+    close = suggest_close_system(system, existing)
+    if close:
+        lines.append(f"  你是不是想: {close}?")
+    lines.append(f"  新增系统: doc-bridge add-system {system}")
+    lines.append(f"  已有系统: {', '.join(existing)}")
+    click.echo("\n".join(lines))
