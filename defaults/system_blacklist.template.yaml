@@ -1,0 +1,4 @@
+# 系统专用黑名单 - 与 config/blacklists/global.yaml 取并集
+tech_terms: []          # 例: ["SomeSystemSpecificTerm"]
+brands: []              # 例: ["某特定供应商"]
+parameter_patterns: []  # 正则，例: ["^PARAM_.*$"]
