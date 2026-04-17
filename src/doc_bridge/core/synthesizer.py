@@ -254,8 +254,8 @@ async def synthesize_system(
     dataflow_flat = _flatten_groups(dataflow_atoms, dataflow_groups)
 
     glossary_md = _build_glossary_table(ws, system, glossary_flat, glossary_path)
-    entity_md = _build_entity_table_grouped(
-        ws, system, entity_atoms, entity_groups, entity_path,
+    entity_md = await _build_entity_table_grouped(
+        ws, system, entity_atoms, entity_groups, entity_path, client, log,
     )
     dataflow_md = _build_dataflow_table(ws, system, dataflow_flat, dataflow_path)
 
@@ -436,14 +436,77 @@ def _merge_group_A1(
     return merged_desc, resp_parts
 
 
-def _build_entity_table_grouped(
+async def _merge_group_A2(
+    atoms: list[tuple[Path, dict[str, Any]]],
+    indices: list[int],
+    client: LLMClient | None,
+    system: str,
+    log: logging.Logger,
+) -> tuple[str, list[str]]:
+    """LLM-rewrite unified description and responsibilities for a merged group.
+
+    Falls back to A1 on any failure. Single-element groups skip the LLM.
+    """
+    if len(indices) == 1 or client is None:
+        return _merge_group_A1(atoms, indices)
+
+    source_blocks: list[str] = []
+    for i in indices:
+        _, meta = atoms[i]
+        name = meta.get("name", "") or ""
+        desc = meta.get("description", "") or ""
+        resps = _extract_responsibilities(meta.get("_body", ""))
+        resp_line = "; ".join(resps) if resps else "(无)"
+        source_blocks.append(
+            f"[来源 {i}] 名称: {name}\n  描述: {desc}\n  职责: {resp_line}"
+        )
+
+    system_prompt = (
+        "你是技术文档整合专家。以下是从不同来源抽取的同一实体的记录，"
+        "请合并成一段统一的描述和一组去重后的职责列表。\n\n"
+        "要求:\n"
+        "- 描述：一句话概括，严禁编造未在给出内容中出现的信息；如各来源相互矛盾，保留并标注。\n"
+        "- 职责：合并语义等价的项，保留所有独立职责，使用简短短语。\n\n"
+        '严格输出 JSON:\n{"description": "合并后描述", "responsibilities": ["职责1", "职责2"]}'
+    )
+    user_content = "\n\n".join(source_blocks)
+
+    try:
+        raw = await client.extract(
+            system_prompt=system_prompt,
+            user_content=user_content,
+            step="merge_entity_group",
+            source_file="(synthesis)",
+            system_name=system,
+            prompt_file="(inline A2)",
+            prompt_version="A2.v1",
+        )
+        from doc_bridge.validation.schema import parse_llm_json
+
+        parsed = parse_llm_json(raw)
+        desc = str(parsed.get("description", "")).strip()
+        resps_out = parsed.get("responsibilities", [])
+        if not isinstance(resps_out, list):
+            raise ValueError("responsibilities 非列表")
+        merged_resps = [str(r).strip() for r in resps_out if str(r).strip()]
+        if not desc:
+            raise ValueError("空描述")
+        return desc, merged_resps
+    except Exception as e:
+        log.warning(f"A2 合并调用失败 indices={indices}: {e}，回退 A1")
+        return _merge_group_A1(atoms, indices)
+
+
+async def _build_entity_table_grouped(
     ws: WorkspaceConfig,
     system: str,
     atoms: list[tuple[Path, dict[str, Any]]],
     groups: list[list[int]],
     synthesis_path: Path,
+    client: LLMClient | None,
+    log: logging.Logger,
 ) -> str:
-    """Render entity summary with aggregated sources across merged atom groups."""
+    """Render entity summary; merged descriptions come from LLM (A2) concurrently."""
     lines = [
         f"# 实体总表 - {system}\n",
         f"> 生成时间: {__import__('datetime').datetime.now().isoformat()}",
@@ -452,10 +515,14 @@ def _build_entity_table_grouped(
         "|----------|------|------|----------|----------|----------|",
     ]
 
-    for indices in groups:
+    merge_tasks = [
+        _merge_group_A2(atoms, indices, client, system, log) for indices in groups
+    ]
+    merged_contents = await asyncio.gather(*merge_tasks)
+
+    for indices, (merged_desc, merged_resps) in zip(groups, merged_contents):
         primary_path, primary_meta = atoms[indices[0]]
         name = primary_meta.get("name", "")
-        merged_desc, merged_resps = _merge_group_A1(atoms, indices)
         resp_str = " / ".join(merged_resps) if merged_resps else ""
 
         file_links: list[str] = []
