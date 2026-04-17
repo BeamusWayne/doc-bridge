@@ -52,12 +52,14 @@ ANTHROPIC_API_KEY=your_api_key_here
 ANTHROPIC_MODEL=glm-5
 ```
 
-### 放入文档
+### 新增系统 + 放入文档
 
 ```bash
-mkdir -p raw/system-A
+doc-bridge add-system system-A
 cp 开发手册.docx 接口规范.pdf raw/system-A/
 ```
+
+`add-system` 幂等，重跑也安全。如果你已经手工建好 `raw/system-A/`，`atomize` 同样能用；`add-system` 的好处是顺带把 `config/systems/system-A/` 脚手架也建起来，方便以后加系统专用提示词或黑名单。
 
 ### 原子化
 
@@ -104,6 +106,7 @@ workspace/
 | 命令 | 说明 |
 |------|------|
 | `doc-bridge init` | 初始化当前目录为工作空间 |
+| `doc-bridge add-system <name>` | 新增一个系统：创建 raw/ 目录和 config/systems/ 脚手架 |
 | `doc-bridge atomize --system <name>` | 原子化指定系统的文档 |
 | `doc-bridge synthesize --system <name>` | 合成指定系统的总表 |
 | `doc-bridge status [--system <name>]` | 查看工作空间状态 |
