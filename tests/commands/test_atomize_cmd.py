@@ -13,10 +13,6 @@ from doc_bridge.commands.atomize_cmd import atomize_cmd
 @pytest.fixture
 def runner_in_workspace(tmp_workspace: Path, monkeypatch: pytest.MonkeyPatch) -> CliRunner:
     monkeypatch.chdir(tmp_workspace)
-    # Avoid env-based LLM lookup crashing tests before we reach the branch under test
-    monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://localhost")
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
-    monkeypatch.setenv("ANTHROPIC_MODEL", "test")
     return CliRunner()
 
 
