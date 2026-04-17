@@ -31,7 +31,9 @@ class TestAddSystemCmd:
     def test_idempotent_when_already_exists(
         self, runner_in_workspace: CliRunner, tmp_workspace: Path
     ) -> None:
-        runner_in_workspace.invoke(add_system_cmd, ["system-B"])
+        first = runner_in_workspace.invoke(add_system_cmd, ["system-B"])
+        assert first.exit_code == 0, first.output
+
         result = runner_in_workspace.invoke(add_system_cmd, ["system-B"])
 
         assert result.exit_code == 0, result.output
