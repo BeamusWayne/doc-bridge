@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from doc_bridge.utils.system_ops import validate_system_name
+from doc_bridge.utils.system_ops import suggest_close_system, validate_system_name
 
 
 class TestValidateSystemName:
@@ -33,3 +33,17 @@ class TestValidateSystemName:
         with pytest.raises(ValueError) as exc:
             validate_system_name(name)
         assert fragment in str(exc.value)
+
+
+class TestSuggestCloseSystem:
+    def test_typo_matches_closest(self) -> None:
+        assert suggest_close_system("sytem-A", ["system-A", "ps"]) == "system-A"
+
+    def test_unrelated_returns_none(self) -> None:
+        assert suggest_close_system("xyz", ["system-A", "ps"]) is None
+
+    def test_empty_list_returns_none(self) -> None:
+        assert suggest_close_system("anything", []) is None
+
+    def test_exact_match_returns_match(self) -> None:
+        assert suggest_close_system("ps", ["system-A", "ps"]) == "ps"

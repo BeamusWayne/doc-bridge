@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import difflib
+
 _FORBIDDEN_CHARS = frozenset(" /\\.")
 _RESERVED_NAMES = frozenset({".", ".."})
 _MAX_NAME_LEN = 64
@@ -28,3 +30,9 @@ def validate_system_name(name: str) -> None:
             f"系统名含非法字符 (空格 / 斜杠 / 反斜杠 / 点): {name!r}\n"
             f"允许: 字母 / 数字 / 连字符 / 下划线 / 中文"
         )
+
+
+def suggest_close_system(name: str, existing: list[str]) -> str | None:
+    """Return the single closest existing system name, or None if no reasonable match."""
+    matches = difflib.get_close_matches(name, existing, n=1, cutoff=0.6)
+    return matches[0] if matches else None
